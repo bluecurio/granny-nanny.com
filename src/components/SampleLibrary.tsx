@@ -221,6 +221,9 @@ function SampleRow({ entry, playState, onPlay, onPause, onStop, onDelete }: {
 
 const MG_FILENAME_RE = /^([A-Z0-9]{2})\.wav$/i;
 
+// Persists for the lifetime of the page; reset only on refresh.
+let sessionMgDecision: 'use' | 'skip' | null = null;
+
 function isMgFilename(filename: string): string | null {
   const m = MG_FILENAME_RE.exec(filename);
   return m ? m[1].toUpperCase() : null;
@@ -233,14 +236,15 @@ interface MgDialogState {
   proposedName: string;
   nameInUse: boolean;
   remainingCount: number;
-  resolve: (r: { useName: boolean; applyToAll: boolean }) => void;
+  resolve: (r: { useName: boolean; applyToAll: boolean; saveForSession: boolean }) => void;
 }
 
 function MgDialog({ state }: { state: MgDialogState }) {
   const { filename, proposedName, nameInUse, remainingCount, resolve } = state;
-  const [applyToAll, setApplyToAll] = useState(false);
+  const [applyToAll,      setApplyToAll]      = useState(false);
+  const [saveForSession,  setSaveForSession]   = useState(false);
 
-  const decide = (useName: boolean) => resolve({ useName, applyToAll });
+  const decide = (useName: boolean) => resolve({ useName, applyToAll, saveForSession });
 
   return (
     <div className="modal-backdrop">
@@ -258,17 +262,27 @@ function MgDialog({ state }: { state: MgDialogState }) {
           </p>
         )}
 
-        {remainingCount > 0 && (
+        <div className="modal-checkboxes">
+          {remainingCount > 0 && (
+            <label className="modal-checkbox">
+              <input
+                type="checkbox"
+                checked={applyToAll}
+                onChange={(e) => setApplyToAll(e.target.checked)}
+              />
+              Apply to the remaining {remainingCount} similar{' '}
+              {remainingCount === 1 ? 'file' : 'files'} in this import
+            </label>
+          )}
           <label className="modal-checkbox">
             <input
               type="checkbox"
-              checked={applyToAll}
-              onChange={(e) => setApplyToAll(e.target.checked)}
+              checked={saveForSession}
+              onChange={(e) => setSaveForSession(e.target.checked)}
             />
-            Apply this choice to the remaining {remainingCount} similar{' '}
-            {remainingCount === 1 ? 'file' : 'files'}
+            Remember this choice for the rest of the session
           </label>
-        )}
+        </div>
 
         <div className="modal-actions">
           <button className="btn modal-btn-secondary" onClick={() => decide(false)}>
@@ -392,7 +406,7 @@ export default function SampleLibrary() {
     proposedName: string,
     nameInUse: boolean,
     remainingCount: number,
-  ): Promise<{ useName: boolean; applyToAll: boolean }> =>
+  ): Promise<{ useName: boolean; applyToAll: boolean; saveForSession: boolean }> =>
     new Promise((resolve) =>
       setMgDialog({ filename, proposedName, nameInUse, remainingCount, resolve }),
     ),
@@ -420,15 +434,17 @@ export default function SampleLibrary() {
           const nameInUse = usedNamesRef.has(proposedMgName);
 
           let useName: boolean;
-          if (batchDecision !== null) {
-            // Use the remembered batch choice; skip if name is taken (can't warn interactively)
-            useName = batchDecision === 'use' && !nameInUse;
+          const silentDecision = sessionMgDecision ?? batchDecision;
+          if (silentDecision !== null) {
+            // Use the remembered decision (session or batch); skip if name is taken
+            useName = silentDecision === 'use' && !nameInUse;
           } else {
             // How many more MG-looking files follow in this batch?
             const remaining = mgFiles.slice(i + 1).filter(Boolean).length;
             const result = await askMg(file.name, proposedMgName, nameInUse, remaining);
             setMgDialog(null);
-            if (result.applyToAll) batchDecision = result.useName ? 'use' : 'skip';
+            if (result.saveForSession) sessionMgDecision = result.useName ? 'use' : 'skip';
+            if (result.applyToAll)     batchDecision      = result.useName ? 'use' : 'skip';
             useName = result.useName;
           }
 

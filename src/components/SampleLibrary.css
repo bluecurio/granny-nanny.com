@@ -46,6 +46,12 @@
 }
 .modal-warning strong { color: var(--orange); }
 
+.modal-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
 .modal-checkbox {
   display: flex;
   align-items: center;
