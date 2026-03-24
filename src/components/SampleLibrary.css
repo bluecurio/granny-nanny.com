@@ -1,3 +1,88 @@
+/* ─── Modal ─────────────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal {
+  background: var(--surface-2);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-l);
+  padding: 22px 24px;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.modal-title {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  color: var(--text-1);
+}
+
+.modal-body {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.modal-body strong { color: var(--text-1); }
+
+.modal-warning {
+  font-size: 11px;
+  color: var(--orange);
+  background: rgba(224, 120, 53, 0.1);
+  border: 1px solid rgba(224, 120, 53, 0.3);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+.modal-warning strong { color: var(--orange); }
+
+.modal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+.modal-checkbox input { cursor: pointer; accent-color: var(--blue); }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.modal-btn-secondary {
+  padding: 6px 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text-2);
+}
+.modal-btn-secondary:hover { color: var(--text-1); border-color: var(--border-hi); }
+
+.modal-btn-primary {
+  padding: 6px 14px;
+  background: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-s);
+  color: #fff;
+  font-weight: bold;
+}
+.modal-btn-primary:hover { opacity: 0.85; }
+
 /* ─── Sample Library ────────────────────────────────────────────────────── */
 .sample-library {
   display: flex;

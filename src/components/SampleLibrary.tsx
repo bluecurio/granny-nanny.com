@@ -217,6 +217,72 @@ function SampleRow({ entry, playState, onPlay, onPause, onStop, onDelete }: {
   );
 }
 
+// ─── microGranny filename detection ──────────────────────────────────────────
+
+const MG_FILENAME_RE = /^([A-Z0-9]{2})\.wav$/i;
+
+function isMgFilename(filename: string): string | null {
+  const m = MG_FILENAME_RE.exec(filename);
+  return m ? m[1].toUpperCase() : null;
+}
+
+// ─── MG import dialog ─────────────────────────────────────────────────────────
+
+interface MgDialogState {
+  filename: string;
+  proposedName: string;
+  nameInUse: boolean;
+  remainingCount: number;
+  resolve: (r: { useName: boolean; applyToAll: boolean }) => void;
+}
+
+function MgDialog({ state }: { state: MgDialogState }) {
+  const { filename, proposedName, nameInUse, remainingCount, resolve } = state;
+  const [applyToAll, setApplyToAll] = useState(false);
+
+  const decide = (useName: boolean) => resolve({ useName, applyToAll });
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" role="dialog" aria-modal="true">
+        <h2 className="modal-title">microGranny sample?</h2>
+        <p className="modal-body">
+          <strong>{filename}</strong> looks like a microGranny sample filename.
+          Use <strong>{proposedName}</strong> as its two-character name?
+        </p>
+
+        {nameInUse && (
+          <p className="modal-warning">
+            ⚠ <strong>{proposedName}</strong> is already in use by another sample.
+            Using it anyway will create a duplicate name.
+          </p>
+        )}
+
+        {remainingCount > 0 && (
+          <label className="modal-checkbox">
+            <input
+              type="checkbox"
+              checked={applyToAll}
+              onChange={(e) => setApplyToAll(e.target.checked)}
+            />
+            Apply this choice to the remaining {remainingCount} similar{' '}
+            {remainingCount === 1 ? 'file' : 'files'}
+          </label>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn modal-btn-secondary" onClick={() => decide(false)}>
+            No, auto-name
+          </button>
+          <button className="btn modal-btn-primary" onClick={() => decide(true)}>
+            Yes, use &ldquo;{proposedName}&rdquo;
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Playback engine ──────────────────────────────────────────────────────────
 
 interface PlaybackRef {
@@ -232,6 +298,7 @@ interface PlaybackRef {
 export default function SampleLibrary() {
   const { samples, addSample, removeSample } = useStore();
   const [processing, setProcessing] = useState<string[]>([]);
+  const [mgDialog, setMgDialog]     = useState<MgDialogState | null>(null);
 
   // Which sample is active and its play/pause state
   const [activeId, setActiveId]       = useState<string | null>(null);
@@ -317,13 +384,57 @@ export default function SampleLibrary() {
     removeSample(id);
   }, [activeId, stopSource, removeSample]);
 
+  /** Prompt the user about a MG-looking filename. Returns a promise that
+   *  resolves once they click a button. */
+  const askMg = useCallback((
+    filename: string,
+    proposedName: string,
+    nameInUse: boolean,
+    remainingCount: number,
+  ): Promise<{ useName: boolean; applyToAll: boolean }> =>
+    new Promise((resolve) =>
+      setMgDialog({ filename, proposedName, nameInUse, remainingCount, resolve }),
+    ),
+  []);
+
   const processFiles = useCallback(async (files: File[]) => {
     setProcessing(files.map((f) => f.name));
+
     const usedNamesRef = new Set(samples.map((s) => s.name));
-    for (const file of files) {
+    // Count how many MG-looking files are in this batch (for "apply to all")
+    const mgFiles = files.map((f) => isMgFilename(f.name));
+    // batchDecision is set when user checks "apply to all"
+    let batchDecision: 'use' | 'skip' | null = null;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       try {
         const audioData = await fileToMono(file);
-        const name = nextAvailableName(usedNamesRef);
+        const proposedMgName = mgFiles[i];
+
+        let name: string;
+
+        if (proposedMgName !== null) {
+          const nameInUse = usedNamesRef.has(proposedMgName);
+
+          let useName: boolean;
+          if (batchDecision !== null) {
+            // Use the remembered batch choice; skip if name is taken (can't warn interactively)
+            useName = batchDecision === 'use' && !nameInUse;
+          } else {
+            // How many more MG-looking files follow in this batch?
+            const remaining = mgFiles.slice(i + 1).filter(Boolean).length;
+            const result = await askMg(file.name, proposedMgName, nameInUse, remaining);
+            setMgDialog(null);
+            if (result.applyToAll) batchDecision = result.useName ? 'use' : 'skip';
+            useName = result.useName;
+          }
+
+          name = useName ? proposedMgName : nextAvailableName(usedNamesRef);
+        } else {
+          name = nextAvailableName(usedNamesRef);
+        }
+
         usedNamesRef.add(name);
         addSample({ id: makeId(), name, originalFilename: file.name, audioData, bitDepth: 16, duration: audioData.length / MG_RATE });
       } catch (e) {
@@ -331,10 +442,12 @@ export default function SampleLibrary() {
       }
     }
     setProcessing([]);
-  }, [samples, addSample]);
+  }, [samples, addSample, askMg]);
 
   return (
     <div className="sample-library">
+      {mgDialog && <MgDialog state={mgDialog} />}
+
       <div className="sample-library-top">
         <DropZone onFiles={processFiles} />
         <RecordBar />
