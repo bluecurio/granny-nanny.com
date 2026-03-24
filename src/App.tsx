@@ -39,6 +39,10 @@ export default function App() {
         {activeTab === 'presets' && <PresetEditor />}
         {activeTab === 'export'  && <ExportPanel />}
       </main>
+
+      <footer className="app-footer">
+        built by <a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
+      </footer>
     </div>
   );
 }
