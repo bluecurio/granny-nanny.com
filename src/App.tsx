@@ -5,11 +5,13 @@ import { useStore, type Tab } from './store';
 import SampleLibrary from './components/SampleLibrary';
 import PresetEditor from './components/PresetEditor';
 import ExportPanel from './components/ExportPanel';
+import DocsPanel from './components/DocsPanel';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'samples', label: 'SAMPLES' },
   { id: 'presets', label: 'PRESETS' },
   { id: 'export',  label: 'EXPORT'  },
+  { id: 'docs',    label: 'DOCS'    },
 ];
 
 export default function App() {
@@ -18,7 +20,6 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <img src={deviceImg} alt="microGranny 2.0" className="app-device-img" />
         <span className="app-logo">granny<span className="app-logo-accent">nanny</span></span>
         <nav className="app-nav">
           {TABS.map((t) => (
@@ -31,17 +32,19 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <span className="app-sub dimmed">microGranny 2.0 preset tool</span>
+        <span className="app-sub dimmed"></span>
+        <img src={deviceImg} alt="microGranny 2.0" className="app-device-img" />
       </header>
 
       <main className="app-main">
         {activeTab === 'samples' && <SampleLibrary />}
         {activeTab === 'presets' && <PresetEditor />}
         {activeTab === 'export'  && <ExportPanel />}
+        {activeTab === 'docs'    && <DocsPanel />}
       </main>
 
       <footer className="app-footer">
-        built by{' '}<a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
+        built by&nbsp;<a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
       </footer>
     </div>
   );

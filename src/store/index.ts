@@ -28,7 +28,7 @@ function makeDefaultSlots(): SoundSlot[] {
 
 // ─── Store shape ──────────────────────────────────────────────────────────────
 
-export type Tab = 'samples' | 'presets' | 'export';
+export type Tab = 'samples' | 'presets' | 'export' | 'docs';
 
 interface AppState {
   // Navigation

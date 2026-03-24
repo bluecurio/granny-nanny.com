@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useStore, nextAvailableName, type SampleEntry } from '../store';
 import { fileToMono, MG_SAMPLE_RATE } from '../audio/resample';
 import { startRecording, type RecorderHandle } from '../audio/recorder';
@@ -150,9 +150,110 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-function SampleRow({ entry, playState, onPlay, onPause, onStop, onDelete }: {
+// ─── Waveform ──────────────────────────────────────────────────────────────────
+
+const BLOCK_W  = 3;   // px, drawn width of each amplitude bar
+const BLOCK_GAP = 1;  // px, gap between bars
+const BLOCK_SLOT = BLOCK_W + BLOCK_GAP;
+
+function buildPeaks(audioData: Float32Array, numBlocks: number): Float32Array {
+  const peaks = new Float32Array(numBlocks);
+  const blockSize = audioData.length / numBlocks;
+  for (let b = 0; b < numBlocks; b++) {
+    const start = Math.floor(b * blockSize);
+    const end   = Math.min(Math.floor((b + 1) * blockSize), audioData.length);
+    let peak = 0;
+    for (let i = start; i < end; i++) {
+      const abs = Math.abs(audioData[i]);
+      if (abs > peak) peak = abs;
+    }
+    peaks[b] = peak;
+  }
+  return peaks;
+}
+
+function WaveformCanvas({ audioData, playState, getPosition }: {
+  audioData: Float32Array;
+  playState: 'playing' | 'paused' | 'stopped';
+  getPosition: () => number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cursorPct, setCursorPct] = useState(0);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    if (W === 0 || H === 0) return;
+
+    // Resize backing store to match CSS pixels (no DPR scaling — keeps blocks crisp)
+    canvas.width  = W;
+    canvas.height = H;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, W, H);
+
+    const numBlocks = Math.floor(W / BLOCK_SLOT);
+    const peaks = buildPeaks(audioData, numBlocks);
+    const halfH = H / 2;
+
+    ctx.fillStyle = 'rgba(85, 136, 255, 0.72)';
+    for (let b = 0; b < numBlocks; b++) {
+      const halfBar = Math.max(1, Math.round(peaks[b] * halfH));
+      ctx.fillRect(b * BLOCK_SLOT, halfH - halfBar, BLOCK_W, halfBar * 2);
+    }
+  }, [audioData]);
+
+  // Re-draw waveform when audioData changes or container resizes
+  useLayoutEffect(() => {
+    draw();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(draw);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [draw]);
+
+  // Animate cursor position
+  useEffect(() => {
+    const totalSecs = audioData.length / MG_RATE;
+    if (playState === 'stopped') {
+      setCursorPct(0);
+      return;
+    }
+    if (playState === 'paused') {
+      setCursorPct(Math.min(1, getPosition() / totalSecs));
+      return;
+    }
+    // playing — drive via rAF
+    let rafId: number;
+    const tick = () => {
+      setCursorPct(Math.min(1, getPosition() / totalSecs));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [playState, getPosition, audioData.length]);
+
+  return (
+    <div className="waveform-wrap">
+      <canvas ref={canvasRef} className="waveform-canvas" />
+      <div
+        className="waveform-cursor"
+        style={{ left: `${cursorPct * 100}%`, opacity: playState === 'stopped' ? 0 : 1 }}
+      />
+    </div>
+  );
+}
+
+// ─── Sample row ────────────────────────────────────────────────────────────────
+
+function SampleRow({ entry, playState, getPosition, onPlay, onPause, onStop, onDelete }: {
   entry: SampleEntry;
   playState: 'playing' | 'paused' | 'stopped';
+  getPosition: () => number;
   onPlay: (entry: SampleEntry) => void;
   onPause: () => void;
   onStop: () => void;
@@ -170,49 +271,52 @@ function SampleRow({ entry, playState, onPlay, onPause, onStop, onDelete }: {
 
   return (
     <div className={`sample-row ${active ? 'sample-row--active' : ''}`}>
-      <NameInput value={entry.name} onChange={handleNameChange} />
-      <span className="sample-filename" title={entry.originalFilename}>
-        {entry.originalFilename}
-      </span>
-      <span className="sample-duration dimmed">{formatDuration(entry.audioData)}</span>
-      <select
-        className="bitdepth-select"
-        value={entry.bitDepth}
-        onChange={(e) => updateSample(entry.id, { bitDepth: Number(e.target.value) as BitDepth })}
-      >
-        <option value={16}>16-bit</option>
-        <option value={8}>8-bit</option>
-      </select>
-      <div className="playback-btns">
-        {/* Play / Resume */}
-        <button
-          className={`icon-btn ${playState === 'playing' ? 'icon-btn--active' : ''}`}
-          title={playState === 'paused' ? 'Resume' : 'Play'}
-          onClick={() => onPlay(entry)}
-          disabled={playState === 'playing'}
+      <div className="sample-row-controls">
+        <NameInput value={entry.name} onChange={handleNameChange} />
+        <span className="sample-filename" title={entry.originalFilename}>
+          {entry.originalFilename}
+        </span>
+        <span className="sample-duration dimmed">{formatDuration(entry.audioData)}</span>
+        <select
+          className="bitdepth-select"
+          value={entry.bitDepth}
+          onChange={(e) => updateSample(entry.id, { bitDepth: Number(e.target.value) as BitDepth })}
         >
-          ▶
-        </button>
-        {/* Pause */}
-        <button
-          className="icon-btn"
-          title="Pause"
-          onClick={onPause}
-          disabled={!active || playState === 'paused'}
-        >
-          ⏸
-        </button>
-        {/* Stop */}
-        <button
-          className="icon-btn"
-          title="Stop"
-          onClick={onStop}
-          disabled={!active}
-        >
-          ⏹
-        </button>
+          <option value={16}>16-bit</option>
+          <option value={8}>8-bit</option>
+        </select>
+        <div className="playback-btns">
+          {/* Play / Resume */}
+          <button
+            className={`icon-btn ${playState === 'playing' ? 'icon-btn--active' : ''}`}
+            title={playState === 'paused' ? 'Resume' : 'Play'}
+            onClick={() => onPlay(entry)}
+            disabled={playState === 'playing'}
+          >
+            ▶
+          </button>
+          {/* Pause */}
+          <button
+            className="icon-btn"
+            title="Pause"
+            onClick={onPause}
+            disabled={!active || playState === 'paused'}
+          >
+            ⏸
+          </button>
+          {/* Stop */}
+          <button
+            className="icon-btn"
+            title="Stop"
+            onClick={onStop}
+            disabled={!active}
+          >
+            ⏹
+          </button>
+        </div>
+        <button className="icon-btn icon-btn--danger" title="Remove" onClick={() => onDelete(entry.id)}>✕</button>
       </div>
-      <button className="icon-btn icon-btn--danger" title="Remove" onClick={() => onDelete(entry.id)}>✕</button>
+      <WaveformCanvas audioData={entry.audioData} playState={playState} getPosition={getPosition} />
     </div>
   );
 }
@@ -235,16 +339,14 @@ interface MgDialogState {
   filename: string;
   proposedName: string;
   nameInUse: boolean;
-  remainingCount: number;
-  resolve: (r: { useName: boolean; applyToAll: boolean; saveForSession: boolean }) => void;
+  resolve: (r: { useName: boolean; saveForSession: boolean }) => void;
 }
 
 function MgDialog({ state }: { state: MgDialogState }) {
-  const { filename, proposedName, nameInUse, remainingCount, resolve } = state;
-  const [applyToAll,      setApplyToAll]      = useState(false);
-  const [saveForSession,  setSaveForSession]   = useState(false);
+  const { filename, proposedName, nameInUse, resolve } = state;
+  const [saveForSession, setSaveForSession] = useState(false);
 
-  const decide = (useName: boolean) => resolve({ useName, applyToAll, saveForSession });
+  const decide = (useName: boolean) => resolve({ useName, saveForSession });
 
   return (
     <div className="modal-backdrop">
@@ -263,17 +365,6 @@ function MgDialog({ state }: { state: MgDialogState }) {
         )}
 
         <div className="modal-checkboxes">
-          {remainingCount > 0 && (
-            <label className="modal-checkbox">
-              <input
-                type="checkbox"
-                checked={applyToAll}
-                onChange={(e) => setApplyToAll(e.target.checked)}
-              />
-              Apply to the remaining {remainingCount} similar{' '}
-              {remainingCount === 1 ? 'file' : 'files'} in this import
-            </label>
-          )}
           <label className="modal-checkbox">
             <input
               type="checkbox"
@@ -399,16 +490,26 @@ export default function SampleLibrary() {
     removeSample(id);
   }, [activeId, stopSource, removeSample]);
 
+  /** Returns current playback position in seconds for the active sample. */
+  const getPosition = useCallback((): number => {
+    if (playState === 'stopped') return 0;
+    if (playState === 'paused')  return pbRef.current.offset;
+    const ctx = audioCtxRef.current;
+    if (!ctx) return pbRef.current.offset;
+    return pbRef.current.offset + (ctx.currentTime - pbRef.current.startedAt);
+  }, [playState]);
+
+  const noopGetPosition = useCallback(() => 0, []);
+
   /** Prompt the user about a MG-looking filename. Returns a promise that
    *  resolves once they click a button. */
   const askMg = useCallback((
     filename: string,
     proposedName: string,
     nameInUse: boolean,
-    remainingCount: number,
-  ): Promise<{ useName: boolean; applyToAll: boolean; saveForSession: boolean }> =>
+  ): Promise<{ useName: boolean; saveForSession: boolean }> =>
     new Promise((resolve) =>
-      setMgDialog({ filename, proposedName, nameInUse, remainingCount, resolve }),
+      setMgDialog({ filename, proposedName, nameInUse, resolve }),
     ),
   []);
 
@@ -417,10 +518,7 @@ export default function SampleLibrary() {
     setDecodeErrors([]);
 
     const usedNamesRef = new Set(samples.map((s) => s.name));
-    // Count how many MG-looking files are in this batch (for "apply to all")
     const mgFiles = files.map((f) => isMgFilename(f.name));
-    // batchDecision is set when user checks "apply to all"
-    let batchDecision: 'use' | 'skip' | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -434,17 +532,12 @@ export default function SampleLibrary() {
           const nameInUse = usedNamesRef.has(proposedMgName);
 
           let useName: boolean;
-          const silentDecision = sessionMgDecision ?? batchDecision;
-          if (silentDecision !== null) {
-            // Use the remembered decision (session or batch); skip if name is taken
-            useName = silentDecision === 'use' && !nameInUse;
+          if (sessionMgDecision !== null) {
+            useName = sessionMgDecision === 'use' && !nameInUse;
           } else {
-            // How many more MG-looking files follow in this batch?
-            const remaining = mgFiles.slice(i + 1).filter(Boolean).length;
-            const result = await askMg(file.name, proposedMgName, nameInUse, remaining);
+            const result = await askMg(file.name, proposedMgName, nameInUse);
             setMgDialog(null);
             if (result.saveForSession) sessionMgDecision = result.useName ? 'use' : 'skip';
-            if (result.applyToAll)     batchDecision      = result.useName ? 'use' : 'skip';
             useName = result.useName;
           }
 
@@ -499,17 +592,21 @@ export default function SampleLibrary() {
               <span>Playback</span>
               <span></span>
             </div>
-            {samples.map((entry) => (
-              <SampleRow
-                key={entry.id}
-                entry={entry}
-                playState={activeId === entry.id ? playState : 'stopped'}
-                onPlay={handlePlay}
-                onPause={handlePause}
-                onStop={handleStop}
-                onDelete={handleDelete}
-              />
-            ))}
+            {samples.map((entry) => {
+              const isActive = activeId === entry.id;
+              return (
+                <SampleRow
+                  key={entry.id}
+                  entry={entry}
+                  playState={isActive ? playState : 'stopped'}
+                  getPosition={isActive ? getPosition : noopGetPosition}
+                  onPlay={handlePlay}
+                  onPause={handlePause}
+                  onStop={handleStop}
+                  onDelete={handleDelete}
+                />
+              );
+            })}
           </>
         )}
       </div>

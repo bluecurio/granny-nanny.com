@@ -233,16 +233,12 @@
   text-align: center;
 }
 
-.sample-list-header,
-.sample-row {
+.sample-list-header {
   display: grid;
   grid-template-columns: 52px 1fr 70px 80px 90px 36px;
   align-items: center;
   gap: 10px;
   padding: 5px 10px;
-}
-
-.sample-list-header {
   color: var(--text-3);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -253,11 +249,49 @@
 }
 
 .sample-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px 0;
   border-radius: var(--radius-s);
   transition: background 0.1s;
 }
 .sample-row:hover { background: var(--surface-2); }
 .sample-row--active { background: var(--surface-2); }
+
+.sample-row-controls {
+  display: grid;
+  grid-template-columns: 52px 1fr 70px 80px 90px 36px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+/* ─── Waveform ───────────────────────────────────────────────────────────── */
+.waveform-wrap {
+  position: relative;
+  width: 100%;
+  margin-top: 5px;
+}
+
+.waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 36px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.waveform-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
 
 /* ─── Playback buttons ──────────────────────────────────────────────────── */
 .playback-btns {
