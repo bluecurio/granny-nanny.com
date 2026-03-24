@@ -150,21 +150,26 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-function SampleRow({ entry, onPlay, onDelete }: {
+function SampleRow({ entry, playState, onPlay, onPause, onStop, onDelete }: {
   entry: SampleEntry;
+  playState: 'playing' | 'paused' | 'stopped';
   onPlay: (entry: SampleEntry) => void;
+  onPause: () => void;
+  onStop: () => void;
   onDelete: (id: string) => void;
 }) {
   const { updateSample, samples } = useStore();
   const usedNames = new Set(samples.filter((s) => s.id !== entry.id).map((s) => s.name));
 
   const handleNameChange = (name: string) => {
-    if (usedNames.has(name)) return; // duplicate — ignore
+    if (usedNames.has(name)) return;
     updateSample(entry.id, { name });
   };
 
+  const active = playState !== 'stopped';
+
   return (
-    <div className="sample-row">
+    <div className={`sample-row ${active ? 'sample-row--active' : ''}`}>
       <NameInput value={entry.name} onChange={handleNameChange} />
       <span className="sample-filename" title={entry.originalFilename}>
         {entry.originalFilename}
@@ -178,10 +183,48 @@ function SampleRow({ entry, onPlay, onDelete }: {
         <option value={16}>16-bit</option>
         <option value={8}>8-bit</option>
       </select>
-      <button className="icon-btn" title="Preview" onClick={() => onPlay(entry)}>▶</button>
+      <div className="playback-btns">
+        {/* Play / Resume */}
+        <button
+          className={`icon-btn ${playState === 'playing' ? 'icon-btn--active' : ''}`}
+          title={playState === 'paused' ? 'Resume' : 'Play'}
+          onClick={() => onPlay(entry)}
+          disabled={playState === 'playing'}
+        >
+          ▶
+        </button>
+        {/* Pause */}
+        <button
+          className="icon-btn"
+          title="Pause"
+          onClick={onPause}
+          disabled={!active || playState === 'paused'}
+        >
+          ⏸
+        </button>
+        {/* Stop */}
+        <button
+          className="icon-btn"
+          title="Stop"
+          onClick={onStop}
+          disabled={!active}
+        >
+          ⏹
+        </button>
+      </div>
       <button className="icon-btn icon-btn--danger" title="Remove" onClick={() => onDelete(entry.id)}>✕</button>
     </div>
   );
+}
+
+// ─── Playback engine ──────────────────────────────────────────────────────────
+
+interface PlaybackRef {
+  sourceNode: AudioBufferSourceNode | null;
+  /** AudioContext.currentTime at the moment play/resume was called */
+  startedAt: number;
+  /** Seconds into the buffer where playback began (non-zero after pause) */
+  offset: number;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -189,48 +232,106 @@ function SampleRow({ entry, onPlay, onDelete }: {
 export default function SampleLibrary() {
   const { samples, addSample, removeSample } = useStore();
   const [processing, setProcessing] = useState<string[]>([]);
+
+  // Which sample is active and its play/pause state
+  const [activeId, setActiveId]       = useState<string | null>(null);
+  const [playState, setPlayState]     = useState<'playing' | 'paused' | 'stopped'>('stopped');
+
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const pbRef       = useRef<PlaybackRef>({ sourceNode: null, startedAt: 0, offset: 0 });
+
+  const getCtx = useCallback(async () => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new AudioContext();
+    }
+    if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
+    return audioCtxRef.current;
+  }, []);
+
+  const stopSource = useCallback(() => {
+    try { pbRef.current.sourceNode?.stop(); } catch { /* already stopped */ }
+    pbRef.current.sourceNode = null;
+  }, []);
+
+  const startSource = useCallback(async (entry: SampleEntry, offset: number) => {
+    const ctx = await getCtx();
+    const buf = ctx.createBuffer(1, entry.audioData.length, MG_RATE);
+    buf.copyToChannel(entry.audioData, 0);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0, offset);
+    src.onended = () => {
+      // Only auto-reset if this node is still the active one (not stopped manually)
+      if (pbRef.current.sourceNode === src) {
+        pbRef.current.sourceNode = null;
+        pbRef.current.offset = 0;
+        setPlayState('stopped');
+      }
+    };
+
+    pbRef.current.sourceNode = src;
+    pbRef.current.startedAt  = ctx.currentTime;
+    pbRef.current.offset     = offset;
+  }, [getCtx]);
+
+  const handlePlay = useCallback(async (entry: SampleEntry) => {
+    // If a different sample is active, stop it first
+    if (activeId && activeId !== entry.id) {
+      stopSource();
+      pbRef.current.offset = 0;
+    }
+
+    const offset = activeId === entry.id && playState === 'paused'
+      ? pbRef.current.offset   // resume from where we paused
+      : 0;                     // fresh play
+
+    setActiveId(entry.id);
+    setPlayState('playing');
+    await startSource(entry, offset);
+  }, [activeId, playState, startSource, stopSource]);
+
+  const handlePause = useCallback(() => {
+    if (!audioCtxRef.current || playState !== 'playing') return;
+    const elapsed = audioCtxRef.current.currentTime - pbRef.current.startedAt;
+    pbRef.current.offset += elapsed;
+    stopSource();
+    setPlayState('paused');
+  }, [playState, stopSource]);
+
+  const handleStop = useCallback(() => {
+    stopSource();
+    pbRef.current.offset = 0;
+    setActiveId(null);
+    setPlayState('stopped');
+  }, [stopSource]);
+
+  const handleDelete = useCallback((id: string) => {
+    if (activeId === id) {
+      stopSource();
+      pbRef.current.offset = 0;
+      setActiveId(null);
+      setPlayState('stopped');
+    }
+    removeSample(id);
+  }, [activeId, stopSource, removeSample]);
 
   const processFiles = useCallback(async (files: File[]) => {
-    const names = files.map((f) => f.name);
-    setProcessing(names);
-
+    setProcessing(files.map((f) => f.name));
     const usedNamesRef = new Set(samples.map((s) => s.name));
-
     for (const file of files) {
       try {
         const audioData = await fileToMono(file);
         const name = nextAvailableName(usedNamesRef);
         usedNamesRef.add(name);
-        addSample({
-          id: makeId(),
-          name,
-          originalFilename: file.name,
-          audioData,
-          bitDepth: 16,
-          duration: audioData.length / MG_RATE,
-        });
+        addSample({ id: makeId(), name, originalFilename: file.name, audioData, bitDepth: 16, duration: audioData.length / MG_RATE });
       } catch (e) {
         console.error(`Failed to process ${file.name}:`, e);
       }
     }
     setProcessing([]);
   }, [samples, addSample]);
-
-  const playPreview = useCallback(async (entry: SampleEntry) => {
-    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-      audioCtxRef.current = new AudioContext();
-    }
-    const ctx = audioCtxRef.current;
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    const buf = ctx.createBuffer(1, entry.audioData.length, MG_RATE);
-    buf.copyToChannel(entry.audioData, 0);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start();
-  }, []);
 
   return (
     <div className="sample-library">
@@ -240,9 +341,7 @@ export default function SampleLibrary() {
       </div>
 
       {processing.length > 0 && (
-        <div className="processing-bar dimmed">
-          Processing: {processing.join(', ')}…
-        </div>
+        <div className="processing-bar dimmed">Processing: {processing.join(', ')}…</div>
       )}
 
       <div className="sample-list">
@@ -255,14 +354,18 @@ export default function SampleLibrary() {
               <span>File</span>
               <span>Duration</span>
               <span>Bit depth</span>
+              <span>Playback</span>
               <span></span>
             </div>
             {samples.map((entry) => (
               <SampleRow
                 key={entry.id}
                 entry={entry}
-                onPlay={playPreview}
-                onDelete={removeSample}
+                playState={activeId === entry.id ? playState : 'stopped'}
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onStop={handleStop}
+                onDelete={handleDelete}
               />
             ))}
           </>
