@@ -2,7 +2,7 @@ import './DocsPanel.css';
 
 // ── Update this after uploading zips to S3 ────────────────────────────────────
 // e.g. 'https://granny-nanny-assets.s3.us-east-1.amazonaws.com/sample-packs'
-const SAMPLE_PACK_BASE = 'https://YOUR-BUCKET.s3.amazonaws.com/sample-packs';
+const SAMPLE_PACK_BASE = 'https://granny-nanny-assets.s3.amazonaws.com/sample-packs';
 
 export default function DocsPanel() {
   return (
