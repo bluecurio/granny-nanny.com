@@ -1,5 +1,6 @@
 import './index.css';
 import './App.css';
+import deviceImg from './images/35123.f.jpg';
 import { useStore, type Tab } from './store';
 import SampleLibrary from './components/SampleLibrary';
 import PresetEditor from './components/PresetEditor';
@@ -17,6 +18,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
+        <img src={deviceImg} alt="microGranny 2.0" className="app-device-img" />
         <span className="app-logo">granny<span className="app-logo-accent">nanny</span></span>
         <nav className="app-nav">
           {TABS.map((t) => (
