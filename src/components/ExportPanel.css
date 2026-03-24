@@ -67,6 +67,40 @@
 }
 .export-preset-row:hover { background: var(--surface-2); }
 
+/* ─── Instructions ──────────────────────────────────────────────────────── */
+.export-instructions {
+  display: flex;
+  flex-direction: column;
+}
+
+.export-steps {
+  margin: 0 0 10px 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.export-steps code {
+  font-family: var(--font);
+  font-size: 12px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-1);
+}
+
+.export-note {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: 0;
+}
+
 /* ─── Actions ───────────────────────────────────────────────────────────── */
 .export-actions {
   display: flex;

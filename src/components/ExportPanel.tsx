@@ -136,6 +136,21 @@ export default function ExportPanel() {
         )}
       </div>
 
+      <div className="export-instructions">
+        <h2 className="export-heading">How to use</h2>
+        <ol className="export-steps">
+          <li>Click <strong>Download SD card .zip</strong> below.</li>
+          <li>Extract the zip — inside you'll find your <code>.WAV</code> and <code>.TXT</code> files.</li>
+          <li>Copy the contents directly to the <strong>root directory</strong> of your SD card (not into a subfolder).</li>
+          <li>Insert the card into the microGranny and power it on — your samples and presets will be ready to play.</li>
+        </ol>
+        <p className="export-note">
+          Any standard SD card works. granny-nanny handles all the encoding automatically —
+          samples are converted to 22&thinsp;kHz mono WAV and presets are written in the
+          exact binary format the microGranny firmware expects.
+        </p>
+      </div>
+
       <div className="export-actions">
         <button
           className="export-btn"

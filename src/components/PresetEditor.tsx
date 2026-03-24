@@ -81,9 +81,7 @@ class BitCrushProcessor extends AudioWorkletProcessor {
     const bits = parameters.bits[0];
     const step = 2 / Math.pow(2, bits);
     for (let i = 0; i < output.length; i++) {
-      output[i] = input[i] !== undefined 
-        ? Math.floor(Math.round(input[i] / step) * step) 
-        : 0;
+      output[i] = input[i] !== undefined ? Math.round(input[i] / step) * step : 0;
     }
     return true;
   }
@@ -99,7 +97,8 @@ async function loadBitCrushWorklet(ctx: AudioContext): Promise<void> {
 }
 
 function crushBits(crush: number): number {
-  return Math.max(1, Math.round(8 - (crush / 127) * 6)); // 8→2 bits
+  // crush=0 → 16 bits (transparent), crush=127 → 2 bits (maximum crush)
+  return Math.max(2, Math.round(16 - (crush / 127) * 14));
 }
 
 function slotWindow(slot: SoundSlot, totalDur: number) {
