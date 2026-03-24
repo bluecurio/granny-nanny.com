@@ -184,6 +184,37 @@
   border-top: 1px solid var(--border);
 }
 
+/* ─── Decode error alert ────────────────────────────────────────────────── */
+.decode-error-box {
+  position: relative;
+  margin: 0 16px;
+  padding: 10px 38px 10px 14px;
+  background: rgba(224, 85, 85, 0.12);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  color: var(--text-1);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.decode-error-box strong { color: var(--red); }
+
+.decode-error-box ul {
+  margin: 4px 0 0 16px;
+  color: var(--text-2);
+}
+
+.decode-error-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.decode-error-dismiss:hover { color: var(--red); }
+
 /* ─── Sample list ───────────────────────────────────────────────────────── */
 .sample-list {
   flex: 1;

@@ -297,8 +297,9 @@ interface PlaybackRef {
 
 export default function SampleLibrary() {
   const { samples, addSample, removeSample } = useStore();
-  const [processing, setProcessing] = useState<string[]>([]);
-  const [mgDialog, setMgDialog]     = useState<MgDialogState | null>(null);
+  const [processing, setProcessing]   = useState<string[]>([]);
+  const [decodeErrors, setDecodeErrors] = useState<string[]>([]);
+  const [mgDialog, setMgDialog]       = useState<MgDialogState | null>(null);
 
   // Which sample is active and its play/pause state
   const [activeId, setActiveId]       = useState<string | null>(null);
@@ -399,6 +400,7 @@ export default function SampleLibrary() {
 
   const processFiles = useCallback(async (files: File[]) => {
     setProcessing(files.map((f) => f.name));
+    setDecodeErrors([]);
 
     const usedNamesRef = new Set(samples.map((s) => s.name));
     // Count how many MG-looking files are in this batch (for "apply to all")
@@ -438,7 +440,8 @@ export default function SampleLibrary() {
         usedNamesRef.add(name);
         addSample({ id: makeId(), name, originalFilename: file.name, audioData, bitDepth: 16, duration: audioData.length / MG_RATE });
       } catch (e) {
-        console.error(`Failed to process ${file.name}:`, e);
+        const msg = e instanceof Error ? e.message : String(e);
+        setDecodeErrors((prev) => [...prev, `${file.name}: ${msg}`]);
       }
     }
     setProcessing([]);
@@ -455,6 +458,16 @@ export default function SampleLibrary() {
 
       {processing.length > 0 && (
         <div className="processing-bar dimmed">Processing: {processing.join(', ')}…</div>
+      )}
+
+      {decodeErrors.length > 0 && (
+        <div className="decode-error-box">
+          <strong>Failed to decode {decodeErrors.length === 1 ? 'one file' : `${decodeErrors.length} files`}:</strong>
+          <ul>
+            {decodeErrors.map((msg, i) => <li key={i}>{msg}</li>)}
+          </ul>
+          <button className="decode-error-dismiss" onClick={() => setDecodeErrors([])}>✕</button>
+        </div>
       )}
 
       <div className="sample-list">
