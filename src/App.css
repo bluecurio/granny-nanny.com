@@ -1,0 +1,54 @@
+/* ─── App shell ─────────────────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  height: 48px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.app-logo {
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  color: var(--text-1);
+}
+.app-logo-accent { color: var(--red); }
+
+.app-nav {
+  display: flex;
+  gap: 2px;
+}
+
+.nav-btn {
+  padding: 5px 14px;
+  border-radius: var(--radius-s);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  transition: color 0.1s, background 0.1s;
+}
+.nav-btn:hover { color: var(--text-1); background: var(--surface-3); }
+.nav-btn--active { color: var(--text-1); background: var(--surface-3); }
+
+.app-sub {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

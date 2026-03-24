@@ -1,0 +1,273 @@
+import { useRef, useState, useCallback, useEffect } from 'react';
+import { useStore, nextAvailableName, type SampleEntry } from '../store';
+import { fileToMono, MG_SAMPLE_RATE } from '../audio/resample';
+import { startRecording, type RecorderHandle } from '../audio/recorder';
+import type { BitDepth } from '../audio/wavEncoder';
+import './SampleLibrary.css';
+
+const VALID_NAME = /^[A-Z0-9]{0,2}$/;
+const MG_RATE = MG_SAMPLE_RATE;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function makeId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function formatDuration(samples: Float32Array) {
+  const secs = samples.length / MG_RATE;
+  return secs < 10 ? secs.toFixed(2) + 's' : secs.toFixed(1) + 's';
+}
+
+function isValidSampleFile(file: File) {
+  return file.type.startsWith('audio/') || /\.(wav|mp3|ogg|flac|aiff?|m4a|webm)$/i.test(file.name);
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files).filter(isValidSampleFile);
+    if (files.length) onFiles(files);
+  }, [onFiles]);
+
+  return (
+    <div
+      className={`drop-zone ${dragging ? 'drop-zone--active' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      onClick={() => inputRef.current?.click()}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="audio/*"
+        multiple
+        className="sr-only"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []).filter(isValidSampleFile);
+          if (files.length) onFiles(files);
+          e.target.value = '';
+        }}
+      />
+      <span className="drop-zone-icon">+</span>
+      <span>Drop audio files here or <u>click to browse</u></span>
+      <span className="dimmed">WAV · MP3 · OGG · FLAC · AIFF · M4A</span>
+    </div>
+  );
+}
+
+function RecordBar() {
+  const { samples, addSample } = useStore();
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const handleRef = useRef<RecorderHandle | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRec = async () => {
+    setError(null);
+    try {
+      const { handle, samplesPromise } = await startRecording();
+      handleRef.current = handle;
+      setRecording(true);
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
+
+      const audioData = await samplesPromise;
+      const usedNames = new Set(samples.map((s) => s.name));
+      addSample({
+        id: makeId(),
+        name: nextAvailableName(usedNames),
+        originalFilename: 'recording',
+        audioData,
+        bitDepth: 16,
+        duration: audioData.length / MG_RATE,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Mic error');
+    } finally {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecording(false);
+      setElapsed(0);
+      handleRef.current = null;
+    }
+  };
+
+  const stopRec = () => handleRef.current?.stop();
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  return (
+    <div className="record-bar">
+      {recording ? (
+        <>
+          <span className="record-dot" />
+          <span className="record-time">{elapsed}s</span>
+          <button className="btn btn--danger" onClick={stopRec}>Stop</button>
+        </>
+      ) : (
+        <button className="btn btn--record" onClick={startRec}>&#9679; Record from mic</button>
+      )}
+      {error && <span className="record-error">{error}</span>}
+    </div>
+  );
+}
+
+function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  const commit = () => {
+    const v = draft.toUpperCase();
+    if (v.length === 2 && VALID_NAME.test(v)) {
+      onChange(v);
+    } else {
+      setDraft(value); // revert
+    }
+  };
+
+  return (
+    <input
+      className="name-input"
+      value={draft}
+      maxLength={2}
+      onChange={(e) => {
+        const v = e.target.value.toUpperCase();
+        if (VALID_NAME.test(v)) setDraft(v);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === 'Enter' && commit()}
+      spellCheck={false}
+    />
+  );
+}
+
+function SampleRow({ entry, onPlay, onDelete }: {
+  entry: SampleEntry;
+  onPlay: (entry: SampleEntry) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { updateSample, samples } = useStore();
+  const usedNames = new Set(samples.filter((s) => s.id !== entry.id).map((s) => s.name));
+
+  const handleNameChange = (name: string) => {
+    if (usedNames.has(name)) return; // duplicate — ignore
+    updateSample(entry.id, { name });
+  };
+
+  return (
+    <div className="sample-row">
+      <NameInput value={entry.name} onChange={handleNameChange} />
+      <span className="sample-filename" title={entry.originalFilename}>
+        {entry.originalFilename}
+      </span>
+      <span className="sample-duration dimmed">{formatDuration(entry.audioData)}</span>
+      <select
+        className="bitdepth-select"
+        value={entry.bitDepth}
+        onChange={(e) => updateSample(entry.id, { bitDepth: Number(e.target.value) as BitDepth })}
+      >
+        <option value={16}>16-bit</option>
+        <option value={8}>8-bit</option>
+      </select>
+      <button className="icon-btn" title="Preview" onClick={() => onPlay(entry)}>▶</button>
+      <button className="icon-btn icon-btn--danger" title="Remove" onClick={() => onDelete(entry.id)}>✕</button>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function SampleLibrary() {
+  const { samples, addSample, removeSample } = useStore();
+  const [processing, setProcessing] = useState<string[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const processFiles = useCallback(async (files: File[]) => {
+    const names = files.map((f) => f.name);
+    setProcessing(names);
+
+    const usedNamesRef = new Set(samples.map((s) => s.name));
+
+    for (const file of files) {
+      try {
+        const audioData = await fileToMono(file);
+        const name = nextAvailableName(usedNamesRef);
+        usedNamesRef.add(name);
+        addSample({
+          id: makeId(),
+          name,
+          originalFilename: file.name,
+          audioData,
+          bitDepth: 16,
+          duration: audioData.length / MG_RATE,
+        });
+      } catch (e) {
+        console.error(`Failed to process ${file.name}:`, e);
+      }
+    }
+    setProcessing([]);
+  }, [samples, addSample]);
+
+  const playPreview = useCallback(async (entry: SampleEntry) => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new AudioContext();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    const buf = ctx.createBuffer(1, entry.audioData.length, MG_RATE);
+    buf.copyToChannel(entry.audioData, 0);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
+  }, []);
+
+  return (
+    <div className="sample-library">
+      <div className="sample-library-top">
+        <DropZone onFiles={processFiles} />
+        <RecordBar />
+      </div>
+
+      {processing.length > 0 && (
+        <div className="processing-bar dimmed">
+          Processing: {processing.join(', ')}…
+        </div>
+      )}
+
+      <div className="sample-list">
+        {samples.length === 0 ? (
+          <div className="sample-empty dimmed">No samples loaded yet.</div>
+        ) : (
+          <>
+            <div className="sample-list-header">
+              <span>Name</span>
+              <span>File</span>
+              <span>Duration</span>
+              <span>Bit depth</span>
+              <span></span>
+            </div>
+            {samples.map((entry) => (
+              <SampleRow
+                key={entry.id}
+                entry={entry}
+                onPlay={playPreview}
+                onDelete={removeSample}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

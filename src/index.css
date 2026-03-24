@@ -1,0 +1,66 @@
+/* ─── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  --bg:        #111115;
+  --surface-1: #1a1a20;
+  --surface-2: #22222c;
+  --surface-3: #2c2c38;
+  --border:    #38383f;
+  --border-hi: #55556a;
+
+  --text-1: #ececf0;
+  --text-2: #8888a0;
+  --text-3: #55556a;
+
+  --red:    #e05555;
+  --green:  #55c888;
+  --blue:   #5588ff;
+  --orange: #e07835;
+
+  --radius-s: 3px;
+  --radius:   5px;
+  --radius-l: 8px;
+
+  --font: ui-monospace, 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  --font-size: 12px;
+}
+
+/* ─── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+
+/* ─── Utility ───────────────────────────────────────────────────────────── */
+.dimmed { color: var(--text-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
