@@ -41,7 +41,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        built by <a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
+        built by{' '}<a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
       </footer>
     </div>
   );
