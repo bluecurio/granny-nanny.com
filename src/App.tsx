@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import './index.css';
 import './App.css';
 import deviceImg from './images/35123.f.jpg';
@@ -16,6 +17,16 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const { activeTab, setActiveTab } = useStore();
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.slice(1) as Tab;
+      const valid: Tab[] = ['samples', 'presets', 'export', 'docs'];
+      setActiveTab(valid.includes(hash) ? hash : 'samples');
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [setActiveTab]);
 
   return (
     <div className="app">

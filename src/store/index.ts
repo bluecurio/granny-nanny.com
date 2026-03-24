@@ -54,6 +54,17 @@ interface AppState {
 
 // ─── Auto-name generation ─────────────────────────────────────────────────────
 
+// ─── Hash routing helpers ─────────────────────────────────────────────────────
+
+const TABS_SET = new Set<Tab>(['samples', 'presets', 'export', 'docs']);
+
+function tabFromHash(): Tab {
+  const hash = window.location.hash.slice(1) as Tab;
+  return TABS_SET.has(hash) ? hash : 'samples';
+}
+
+// ─── Auto-name generation ─────────────────────────────────────────────────────
+
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
 export function nextAvailableName(usedNames: Set<string>): string {
@@ -69,8 +80,11 @@ export function nextAvailableName(usedNames: Set<string>): string {
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useStore = create<AppState>((set, get) => ({
-  activeTab: 'samples',
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  activeTab: tabFromHash(),
+  setActiveTab: (tab) => {
+    window.location.hash = tab;
+    set({ activeTab: tab });
+  },
 
   samples: [],
   addSample: (entry) => set((s) => ({ samples: [...s.samples, entry] })),
