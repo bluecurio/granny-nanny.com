@@ -32,8 +32,14 @@ export default function DocsPanel() {
             <li><u>attack</u> and <u>release</u> are also estimations</li>
           </ul> 
         </p>
-        <p>  
+        <p>
           We've done our best to get it right — use your ears as the final judge.
+        </p>
+        <p>
+          granny-nanny is open source —{' '}
+          <a href="https://github.com/bluecurio/granny-nanny.com" target="_blank" rel="noreferrer">
+            view the source on GitHub
+          </a>.
         </p>
       </section>
 
