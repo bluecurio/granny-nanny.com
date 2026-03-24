@@ -131,6 +131,12 @@
   border-radius: var(--radius-l);
 }
 
+.slot-card--selected {
+  border-color: rgba(85, 136, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(85, 136, 255, 0.2), inset 0 0 0 1px rgba(85, 136, 255, 0.06);
+  background: rgba(85, 136, 255, 0.03);
+}
+
 .slot-header {
   display: flex;
   align-items: center;
@@ -143,7 +149,6 @@
 .slot-num {
   font-size: 13px;
   font-weight: bold;
-  color: var(--text-3);
   width: 16px;
 }
 
@@ -177,7 +182,7 @@
 
 .param-row {
   display: grid;
-  grid-template-columns: 62px 1fr 44px;
+  grid-template-columns: 62px 1fr 52px;
   align-items: center;
   gap: 8px;
 }
@@ -241,6 +246,7 @@
 .slot-flags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding: 12px 14px;
 }
@@ -260,6 +266,24 @@
   color: var(--green);
   border-color: var(--green);
   background: rgba(85, 200, 136, 0.1);
+}
+
+/* ─── Randomize button ──────────────────────────────────────────────────── */
+.rand-btn {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.rand-btn:hover {
+  color: #ff5555;
+  border-color: #ff5555;
+  background: rgba(255, 85, 85, 0.1);
 }
 
 /* ─── Slot waveform ─────────────────────────────────────────────────────── */

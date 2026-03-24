@@ -5,7 +5,7 @@ import { startRecording, type RecorderHandle } from '../audio/recorder';
 import type { BitDepth } from '../audio/wavEncoder';
 import './SampleLibrary.css';
 
-const VALID_NAME = /^[A-Z0-9]{0,2}$/;
+const VALID_NAME = /^[a-zA-Z][[a-zA-Z0-9]\b$/;
 const MG_RATE = MG_SAMPLE_RATE;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -323,7 +323,8 @@ function SampleRow({ entry, playState, getPosition, onPlay, onPause, onStop, onD
 
 // ─── microGranny filename detection ──────────────────────────────────────────
 
-const MG_FILENAME_RE = /^([A-Z0-9]{2})\.wav$/i;
+// Matches any audio file whose name starts with a letter followed by a letter or digit
+const MG_FILENAME_RE = /^([A-Z][A-Z0-9])/i;
 
 // Persists for the lifetime of the page; reset only on refresh.
 let sessionMgDecision: 'use' | 'skip' | null = null;
@@ -344,7 +345,7 @@ interface MgDialogState {
 
 function MgDialog({ state }: { state: MgDialogState }) {
   const { filename, proposedName, nameInUse, resolve } = state;
-  const [saveForSession, setSaveForSession] = useState(false);
+  const [saveForSession, setSaveForSession] = useState(true);
 
   const decide = (useName: boolean) => resolve({ useName, saveForSession });
 
@@ -400,11 +401,16 @@ interface PlaybackRef {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+type SortKey = 'name' | 'file' | 'duration';
+type SortDir = 'asc' | 'desc';
+
 export default function SampleLibrary() {
   const { samples, addSample, removeSample } = useStore();
   const [processing, setProcessing]   = useState<string[]>([]);
   const [decodeErrors, setDecodeErrors] = useState<string[]>([]);
   const [mgDialog, setMgDialog]       = useState<MgDialogState | null>(null);
+  const [sortKey, setSortKey]         = useState<SortKey>('name');
+  const [sortDir, setSortDir]         = useState<SortDir>('asc');
 
   // Which sample is active and its play/pause state
   const [activeId, setActiveId]       = useState<string | null>(null);
@@ -501,6 +507,31 @@ export default function SampleLibrary() {
 
   const noopGetPosition = useCallback(() => 0, []);
 
+  const handleSortClick = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedSamples = [...samples].sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === 'name')     cmp = a.name.localeCompare(b.name);
+    if (sortKey === 'file')     cmp = a.originalFilename.localeCompare(b.originalFilename);
+    if (sortKey === 'duration') cmp = a.audioData.length - b.audioData.length;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  // Stop audio when navigating away from this tab
+  useEffect(() => {
+    return () => {
+      stopSource();
+      audioCtxRef.current?.close().catch(() => {});
+    };
+  }, [stopSource]);
+
   /** Prompt the user about a MG-looking filename. Returns a promise that
    *  resolves once they click a button. */
   const askMg = useCallback((
@@ -585,14 +616,24 @@ export default function SampleLibrary() {
         ) : (
           <>
             <div className="sample-list-header">
-              <span>Name</span>
-              <span>File</span>
-              <span>Duration</span>
+              {(['name', 'file', 'duration'] as SortKey[]).map((key, i) => (
+                <button
+                  key={key}
+                  className={`sort-header ${sortKey === key ? 'sort-header--active' : ''}`}
+                  onClick={() => handleSortClick(key)}
+                  style={i === 1 ? { textAlign: 'left' } : undefined}
+                >
+                  {key === 'name' ? 'Name' : key === 'file' ? 'File' : 'Duration'}
+                  <span className="sort-arrow">
+                    {sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⬍'}
+                  </span>
+                </button>
+              ))}
               <span>Bit depth</span>
               <span>Playback</span>
               <span></span>
             </div>
-            {samples.map((entry) => {
+            {sortedSamples.map((entry) => {
               const isActive = activeId === entry.id;
               return (
                 <SampleRow

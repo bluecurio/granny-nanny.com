@@ -1,5 +1,8 @@
 examples/
 
+# Large binary assets — served from S3, not committed to git
+public/sample-packs/
+
 # Dependencies
 node_modules/
 

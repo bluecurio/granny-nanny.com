@@ -30,12 +30,41 @@ const PARAMS_GRANULAR: ParamMeta[] = [
 ];
 
 const FLAGS: { key: keyof ReturnType<typeof getSettingFlags>; label: string; bit: number }[] = [
-  { key: 'tuned',     label: 'TUNED',  bit: SETTING_FLAG.TUNED      },
-  { key: 'legato',    label: 'LEGATO', bit: SETTING_FLAG.LEGATO     },
-  { key: 'repeat',    label: 'REPEAT', bit: SETTING_FLAG.REPEAT     },
-  { key: 'sync',      label: 'SYNC',   bit: SETTING_FLAG.SYNC       },
-  { key: 'randShift', label: 'RAND',   bit: SETTING_FLAG.RAND_SHIFT },
+  { key: 'tuned',  label: 'TUNED',  bit: SETTING_FLAG.TUNED  },
+  { key: 'legato', label: 'LEGATO', bit: SETTING_FLAG.LEGATO  },
+  { key: 'repeat', label: 'REPEAT', bit: SETTING_FLAG.REPEAT  },
+  { key: 'sync',   label: 'SYNC',   bit: SETTING_FLAG.SYNC    },
 ];
+
+// ── Per-parameter display formatters ─────────────────────────────────────────
+
+const PARAM_FORMAT: Partial<Record<string, (v: number) => string>> = {
+  rate:       (v) => (v / 877).toFixed(2) + '×',
+  crush:      (v) => Math.round(v / 127 * 100) + '%',
+  start:      (v) => Math.round(v / 1023 * 100) + '%',
+  end:        (v) => Math.round(v / 1023 * 100) + '%',
+  attack:     (v) => Math.round(v / 127 * 100) + '%',
+  release:    (v) => Math.round(v / 127 * 100) + '%',
+  shiftSpeed: (v) => {
+    const p = Math.round((v - 128) / 128 * 100);
+    return (p > 0 ? '+' : '') + p + '%';
+  },
+};
+
+function randomizeSlot(): Partial<SoundSlot> {
+  const start = Math.floor(Math.random() * 900);
+  const end   = Math.min(1023, start + 50 + Math.floor(Math.random() * (1023 - start)));
+  return {
+    rate:       Math.floor(Math.random() * 1024),
+    crush:      Math.floor(Math.random() * 128),
+    start,
+    end,
+    attack:     Math.floor(Math.random() * 128),
+    release:    Math.floor(Math.random() * 128),
+    loopLength: Math.floor(Math.random() * 128),
+    shiftSpeed: Math.floor(Math.random() * 256),
+  };
+}
 
 // ─── Audio preview engine ─────────────────────────────────────────────────────
 
@@ -52,7 +81,9 @@ class BitCrushProcessor extends AudioWorkletProcessor {
     const bits = parameters.bits[0];
     const step = 2 / Math.pow(2, bits);
     for (let i = 0; i < output.length; i++) {
-      output[i] = input[i] !== undefined ? Math.round(input[i] / step) * step : 0;
+      output[i] = input[i] !== undefined 
+        ? Math.floor(Math.round(input[i] / step) * step) 
+        : 0;
     }
     return true;
   }
@@ -77,6 +108,7 @@ function slotWindow(slot: SoundSlot, totalDur: number) {
   return { startPos, endPos };
 }
 
+/*
 function applyLoopPoints(src: AudioBufferSourceNode, slot: SoundSlot, startPos: number, endPos: number) {
   const flags      = getSettingFlags(slot.setting);
   const windowDur  = endPos - startPos;
@@ -92,6 +124,7 @@ function applyLoopPoints(src: AudioBufferSourceNode, slot: SoundSlot, startPos: 
     src.loopEnd     = endPos;
   }
 }
+*/
 
 const GRAIN_LOOKAHEAD = 0.12; // seconds ahead to schedule grains
 const GRAIN_INTERVAL  = 40;   // ms between scheduler runs
@@ -152,10 +185,11 @@ function BankPresetGrid() {
 // ─── Slot editor ──────────────────────────────────────────────────────────────
 
 function ParamSlider({
-  label, value, min, max, center, hint, onChange,
+  label, value, min, max, center, hint, format, onChange,
 }: {
   label: string; value: number; min: number; max: number;
   center?: number; hint?: string;
+  format?: (v: number) => string;
   onChange: (v: number) => void;
 }) {
   return (
@@ -170,7 +204,7 @@ function ParamSlider({
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <span className={`param-value ${center !== undefined && value === center ? 'param-value--center' : ''}`}>
-        {value}
+        {format ? format(value) : value}
       </span>
     </div>
   );
@@ -194,9 +228,9 @@ const SW_BLOCK_W    = 3;
 const SW_BLOCK_GAP  = 1;
 const SW_BLOCK_SLOT = SW_BLOCK_W + SW_BLOCK_GAP;
 
-// Approximate MG timing: attack 0–127 → 0–1 s, release 0–127 → 0–2 s
-const MAX_ATTACK_S  = 1.0;
-const MAX_RELEASE_S = 2.0;
+// Approximate MG timing
+const MAX_ATTACK_S  = 3.0;
+const MAX_RELEASE_S = 2.5;
 
 function formatSlotDuration(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -400,21 +434,26 @@ function SlotWaveform({ slot, sample }: { slot: SoundSlot; sample: SampleEntry |
 // ─── Slot card ────────────────────────────────────────────────────────────────
 
 function SlotCard({
-  index, slot, onChange, samples, isPlaying, onPlay, onStop,
+  index, slot, onChange, samples, isPlaying, isSelected, onPlay, onStop, onSelect,
 }: {
-  index:     number;
-  slot:      SoundSlot;
-  onChange:  (patch: Partial<SoundSlot>) => void;
-  samples:   SampleEntry[];
-  isPlaying: boolean;
-  onPlay:    (index: number) => void;
-  onStop:    () => void;
+  index:      number;
+  slot:       SoundSlot;
+  onChange:   (patch: Partial<SoundSlot>) => void;
+  samples:    SampleEntry[];
+  isPlaying:  boolean;
+  isSelected: boolean;
+  onPlay:     (index: number) => void;
+  onStop:     () => void;
+  onSelect:   () => void;
 }) {
   const flags            = getSettingFlags(slot.setting);
   const currentInLibrary = samples.some((s) => s.name === slot.sampleName);
 
   return (
-    <div className="slot-card">
+    <div
+      className={`slot-card${isSelected ? ' slot-card--selected' : ''}`}
+      onClick={onSelect}
+    >
       <div className="slot-header">
         <span className="slot-num">{index + 1}</span>
         <div className="slot-sample">
@@ -424,7 +463,7 @@ function SlotCard({
             onChange={(e) => { if (e.target.value) onChange({ sampleName: e.target.value }); }}
           >
             <option value="">—</option>
-            {samples.map((s) => (
+            {[...samples].sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
               <option key={s.id} value={s.name}>{s.name}</option>
             ))}
           </select>
@@ -445,10 +484,11 @@ function SlotCard({
             key={p.key}
             label={p.label}
             value={slot[p.key] as number}
-            min={p.min}
+            min={p.key === 'end' ? slot.start : p.min}
             max={p.max}
             center={p.center}
             hint={p.hint}
+            format={PARAM_FORMAT[p.key]}
             onChange={(v) => onChange({ [p.key]: v })}
           />
         ))}
@@ -462,6 +502,7 @@ function SlotCard({
             max={p.max}
             center={p.center}
             hint={p.hint}
+            format={PARAM_FORMAT[p.key]}
             onChange={(v) => onChange({ [p.key]: v })}
           />
         ))}
@@ -476,6 +517,13 @@ function SlotCard({
             onClick={() => onChange({ setting: slot.setting ^ f.bit })}
           />
         ))}
+        <button
+          className="rand-btn"
+          title="Randomize all parameters"
+          onClick={() => { onStop(); onChange(randomizeSlot()); }}
+        >
+          RAND
+        </button>
       </div>
 
       <SlotWaveform
@@ -520,10 +568,23 @@ export default function PresetEditor() {
   const { activeBank, activePreset, getPreset, updateSlot, samples } = useStore();
   const slots = getPreset(activeBank, activePreset);
 
-  const [playingSlot, setPlayingSlot] = useState<number | null>(null);
+  const [playingSlot, setPlayingSlot]   = useState<number | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const audioRef      = useRef<AudioState | null>(null);
   // Always holds the latest slot state for the grain scheduler to read
   const activeSlotRef = useRef<SoundSlot | null>(null);
+  // Copy/paste clipboard — not render state
+  const copiedSlotRef = useRef<SoundSlot | null>(null);
+
+  // Stable refs so the keydown handler never goes stale
+  const selectedSlotRef = useRef(selectedSlot);
+  selectedSlotRef.current = selectedSlot;
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
+  const activeBankRef = useRef(activeBank);
+  activeBankRef.current = activeBank;
+  const activePresetRef = useRef(activePreset);
+  activePresetRef.current = activePreset;
 
   // ── Stop ────────────────────────────────────────────────────────────────────
 
@@ -538,6 +599,32 @@ export default function PresetEditor() {
     activeSlotRef.current = null;
     setPlayingSlot(null);
   }, []);
+
+  // Stop audio when navigating away from this tab
+  useEffect(() => () => stopPreview(), [stopPreview]);
+
+  // Ctrl+C / Ctrl+V / Ctrl+P copy-paste between slot cards
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (e.key === 'c') {
+        const idx = selectedSlotRef.current;
+        if (idx !== null) copiedSlotRef.current = { ...slotsRef.current[idx] };
+      }
+      if (e.key === 'v' || e.key === 'p') {
+        const idx = selectedSlotRef.current;
+        if (idx !== null && copiedSlotRef.current !== null) {
+          e.preventDefault();
+          updateSlot(activeBankRef.current, activePresetRef.current, idx, copiedSlotRef.current);
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [updateSlot]); // updateSlot is stable (Zustand action)
 
   // ── Grain scheduler ──────────────────────────────────────────────────────────
   // Declared with useCallback so it can reference itself via a stable ref.
@@ -756,8 +843,10 @@ export default function PresetEditor() {
               slot={slot}
               samples={samples}
               isPlaying={playingSlot === i}
-              onPlay={playPreview}
+              isSelected={selectedSlot === i}
+              onPlay={(idx) => { setSelectedSlot(idx); playPreview(idx); }}
               onStop={stopPreview}
+              onSelect={() => setSelectedSlot(i)}
               onChange={(patch) => handleSlotChange(i, patch)}
             />
           ))}

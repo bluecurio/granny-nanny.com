@@ -1,6 +1,5 @@
 .docs-panel {
   padding: 32px 40px;
-  max-width: 680px;
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -26,11 +25,14 @@
 .docs-section p {
   font-size: 13px;
   line-height: 1.7;
-  color: var(--text-2);
 }
 
 .docs-section p strong {
   color: var(--text-1);
+}
+
+.docs-section .stuff {
+  padding-left: 1.5em;
 }
 
 .docs-links {
@@ -43,7 +45,6 @@
 .docs-links li {
   font-size: 13px;
   line-height: 1.6;
-  color: var(--text-2);
 }
 
 .docs-links a {
