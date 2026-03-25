@@ -36,6 +36,9 @@ const FLAGS: { key: keyof ReturnType<typeof getSettingFlags>; label: string; bit
   { key: 'sync',   label: 'SYNC',   bit: SETTING_FLAG.SYNC    },
 ];
 
+const MAX_ATTACK_S  = 5.0;
+const MAX_RELEASE_S = 5.0;
+
 // ── Per-parameter display formatters ─────────────────────────────────────────
 
 const PARAM_FORMAT: Partial<Record<string, (v: number) => string>> = {
@@ -43,8 +46,8 @@ const PARAM_FORMAT: Partial<Record<string, (v: number) => string>> = {
   crush:      (v) => Math.round(v / 127 * 100) + '%',
   start:      (v) => Math.round(v / 1023 * 100) + '%',
   end:        (v) => Math.round(v / 1023 * 100) + '%',
-  attack:     (v) => Math.round(v / 127 * 100) + '%',
-  release:    (v) => Math.round(v / 127 * 100) + '%',
+  attack:     (v) => ((v / 127) * MAX_ATTACK_S).toFixed(2) + 's',
+  release:    (v) => ((v / 127) * MAX_RELEASE_S).toFixed(2) + 's',
   shiftSpeed: (v) => {
     const p = Math.round((v - 128) / 128 * 100);
     return (p > 0 ? '+' : '') + p + '%';
@@ -97,8 +100,30 @@ async function loadBitCrushWorklet(ctx: AudioContext): Promise<void> {
 }
 
 function crushBits(crush: number): number {
-  // crush=0 → 16 bits (transparent), crush=127 → 2 bits (maximum crush)
-  return Math.max(2, Math.round(16 - (crush / 127) * 14));
+  // Display is 0–100% but effect tops out at 90% of range
+  const effective = crush * 0.9;
+  return Math.max(2, Math.round(16 - (effective / 127) * 14));
+}
+
+// ─── Distortion ───────────────────────────────────────────────────────────────
+
+const DEG = Math.PI / 180;
+
+function makeDistortionCurve(k = 50) {
+  const n_samples = 44100;
+  const curve = new Float32Array(n_samples);
+  curve.forEach((_, i) => {
+    const x = (i * 2) / n_samples - 1;
+    curve[i] = ((3 + k) * x * 20 * DEG) / (Math.PI + k * Math.abs(x));
+  });
+  return curve;
+}
+
+/** k value (0–50) proportional to effective crush amount. Returns null when crush=0 (transparent). */
+function distortionK(crush: number): number | null {
+  const effective = crush * 0.9;
+  if (effective < 1) return null;
+  return (effective / 127) * 50;
 }
 
 function slotWindow(slot: SoundSlot, totalDur: number) {
@@ -131,7 +156,8 @@ const GRAIN_INTERVAL  = 40;   // ms between scheduler runs
 interface AudioState {
   ctx:       AudioContext;
   gainNode:  GainNode;           // envelope; all sources connect here
-  crushNode: AudioWorkletNode;   // bit-crush; gainNode → crushNode → destination
+  crushNode: AudioWorkletNode;   // bit-crush; gainNode → crushNode → distNode → destination
+  distNode:  WaveShaperNode;     // distortion; curve intensity tracks crush value
   buf:       AudioBuffer;
   // Linear mode (loopLength === 0)
   src:       AudioBufferSourceNode | null;
@@ -163,7 +189,7 @@ function BankPresetGrid() {
             const key      = presetFilename(bank, p);
             const active   = activeBank === bank && activePreset === p;
             const imported = importedPresets.has(key);
-            const hasData  = !!presets[key] && !imported;
+            const hasData  = !!presets[key] && !imported; // imported clears on first edit
             return (
               <button
                 key={p}
@@ -234,17 +260,18 @@ const SW_BLOCK_W    = 3;
 const SW_BLOCK_GAP  = 1;
 const SW_BLOCK_SLOT = SW_BLOCK_W + SW_BLOCK_GAP;
 
-// Approximate MG timing
-const MAX_ATTACK_S  = 3.0;
-const MAX_RELEASE_S = 2.5;
-
 function formatSlotDuration(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = (secs % 60).toFixed(2);
   return m > 0 ? `${m}:${s.padStart(5, '0')}` : `${s}s`;
 }
 
-function SlotWaveform({ slot, sample }: { slot: SoundSlot; sample: SampleEntry | null }) {
+function SlotWaveform({ slot, sample, isPlaying, getPosition }: {
+  slot: SoundSlot;
+  sample: SampleEntry | null;
+  isPlaying: boolean;
+  getPosition: () => number;
+}) {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const grainOffsetRef = useRef(0);   // 0–1 fraction of the window where grain starts
   const rafRef         = useRef(0);
@@ -418,6 +445,27 @@ function SlotWaveform({ slot, sample }: { slot: SoundSlot; sample: SampleEntry |
   // Redraw on all other param / sample changes (non-animated ones)
   useEffect(() => { draw(); }, [slot, sample, draw]);
 
+  // ── Playback cursor ───────────────────────────────────────────────────────
+  const [cursorPct, setCursorPct] = useState(0);
+
+  useEffect(() => {
+    if (!isPlaying || !sample) {
+      setCursorPct(0);
+      return;
+    }
+    const total    = sample.audioData.length / MG_SAMPLE_RATE;
+    const startPos = (slotRef.current.start / 1023) * total;
+    const endPos   = Math.max(startPos + 0.001, (slotRef.current.end / 1023) * total);
+    let rafId: number;
+    const tick = () => {
+      const pct = Math.max(0, Math.min(1, (getPosition() - startPos) / (endPos - startPos)));
+      setCursorPct(pct);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, sample, getPosition]);
+
   // Effective duration = window length adjusted for rate
   const duration = sample ? (() => {
     const total    = sample.audioData.length;
@@ -430,6 +478,10 @@ function SlotWaveform({ slot, sample }: { slot: SoundSlot; sample: SampleEntry |
   return (
     <div className="slot-waveform-wrap">
       <canvas ref={canvasRef} className="slot-waveform-canvas" />
+      <div
+        className="slot-waveform-cursor"
+        style={{ left: `${cursorPct * 100}%`, opacity: isPlaying ? 1 : 0 }}
+      />
       {duration !== null && (
         <span className="slot-duration">{formatSlotDuration(duration)}</span>
       )}
@@ -440,17 +492,18 @@ function SlotWaveform({ slot, sample }: { slot: SoundSlot; sample: SampleEntry |
 // ─── Slot card ────────────────────────────────────────────────────────────────
 
 function SlotCard({
-  index, slot, onChange, samples, isPlaying, isSelected, onPlay, onStop, onSelect,
+  index, slot, onChange, samples, isPlaying, isSelected, onPlay, onStop, onSelect, getPosition,
 }: {
-  index:      number;
-  slot:       SoundSlot;
-  onChange:   (patch: Partial<SoundSlot>) => void;
-  samples:    SampleEntry[];
-  isPlaying:  boolean;
-  isSelected: boolean;
-  onPlay:     (index: number) => void;
-  onStop:     () => void;
-  onSelect:   () => void;
+  index:       number;
+  slot:        SoundSlot;
+  onChange:    (patch: Partial<SoundSlot>) => void;
+  samples:     SampleEntry[];
+  isPlaying:   boolean;
+  isSelected:  boolean;
+  onPlay:      (index: number) => void;
+  onStop:      () => void;
+  onSelect:    () => void;
+  getPosition: () => number;
 }) {
   const flags            = getSettingFlags(slot.setting);
   const currentInLibrary = samples.some((s) => s.name === slot.sampleName);
@@ -535,6 +588,8 @@ function SlotCard({
       <SlotWaveform
         slot={slot}
         sample={samples.find((s) => s.name === slot.sampleName) ?? null}
+        isPlaying={isPlaying}
+        getPosition={getPosition}
       />
     </div>
   );
@@ -739,8 +794,9 @@ export default function PresetEditor() {
       state.src.playbackRate.value = slot.rate / 877;
     }
     if ('crush' in patch) {
-      // crushNode is always the AudioWorkletNode (gainNode is stored separately)
       state.crushNode.parameters.get('bits')!.value = crushBits(slot.crush);
+      const k = distortionK(slot.crush);
+      state.distNode.curve = k !== null ? makeDistortionCurve(k) : null;
     }
     if ('start' in patch || 'end' in patch || 'loopLength' in patch) {
       recreateSource(slot);
@@ -775,16 +831,25 @@ export default function PresetEditor() {
 
     const crushNode = new AudioWorkletNode(ctx, 'bit-crush-processor');
     crushNode.parameters.get('bits')!.value = crushBits(slot.crush);
-    crushNode.connect(ctx.destination);
+
+    const distNode = ctx.createWaveShaper();
+    const k = distortionK(slot.crush);
+    distNode.curve = k !== null ? makeDistortionCurve(k) : null;
+    distNode.oversample = '4x';
+    crushNode.connect(distNode);
+    distNode.connect(ctx.destination);
 
     const { startPos, endPos } = slotWindow(slot, buf.duration);
 
-    // Attack envelope on a GainNode before the crush
-    const attackSecs = (slot.attack / 127) * 0.5;
-    const gain       = ctx.createGain();
+    // Attack + release envelope on a GainNode before the crush
+    const attackSecs  = (slot.attack  / 127) * MAX_ATTACK_S;
+    const releaseSecs = (slot.release / 127) * MAX_RELEASE_S;
+    const gain        = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
     if (attackSecs > 0.005) {
-      gain.gain.setValueAtTime(0, ctx.currentTime);
       gain.gain.linearRampToValueAtTime(1, ctx.currentTime + attackSecs);
+    } else {
+      gain.gain.setValueAtTime(1, ctx.currentTime);
     }
     gain.connect(crushNode);
 
@@ -794,7 +859,7 @@ export default function PresetEditor() {
       // ── Grain mode: scheduled grain engine ──────────────────────────────
       // Audio chain: each grain → gainNode → crushNode → destination
       audioRef.current = {
-        ctx, gainNode: gain, crushNode, buf,
+        ctx, gainNode: gain, crushNode, distNode, buf,
         src: null, startedAt: 0, offset: 0,
         grainPos: startPos, nextTime: ctx.currentTime, timerId: null,
       };
@@ -802,20 +867,30 @@ export default function PresetEditor() {
     } else {
       // ── Linear mode ─────────────────────────────────────────────────────
       // Audio chain: src → gainNode → crushNode → destination
-      const flags = getSettingFlags(slot.setting);
-      const src   = ctx.createBufferSource();
+      const flags       = getSettingFlags(slot.setting);
+      const src         = ctx.createBufferSource();
       src.buffer             = buf;
       src.playbackRate.value = slot.rate / 877;
       if (flags.repeat) { src.loop = true; src.loopStart = startPos; src.loopEnd = endPos; }
       src.connect(gain);
       src.start(0, startPos, src.loop ? undefined : endPos - startPos);
+
+      // Schedule release ramp (only for non-looping, where we know the duration)
+      if (!src.loop && releaseSecs > 0.005) {
+        const playbackDur    = (endPos - startPos) / (slot.rate / 877);
+        const releaseEndTime = ctx.currentTime + playbackDur;
+        const releaseStartTime = Math.max(ctx.currentTime + attackSecs, releaseEndTime - releaseSecs);
+        gain.gain.setValueAtTime(1, releaseStartTime);
+        gain.gain.linearRampToValueAtTime(0, releaseEndTime);
+      }
+
       src.onended = () => {
         if (audioRef.current?.src === src) {
           ctx.close(); audioRef.current = null; setPlayingSlot(null);
         }
       };
       audioRef.current = {
-        ctx, gainNode: gain, crushNode, buf,
+        ctx, gainNode: gain, crushNode, distNode, buf,
         src, startedAt: ctx.currentTime, offset: startPos,
         grainPos: 0, nextTime: 0, timerId: null,
       };
@@ -823,6 +898,20 @@ export default function PresetEditor() {
 
     setPlayingSlot(slotIndex);
   }, [activeBank, activePreset, getPreset, samples, stopPreview, scheduleGrains]);
+
+  // ── Playback position (for cursor) ───────────────────────────────────────────
+
+  const getActivePosition = useCallback((): number => {
+    const state = audioRef.current;
+    if (!state) return 0;
+    if (state.src) {
+      const rate = state.src.playbackRate?.value ?? 1;
+      return state.offset + (state.ctx.currentTime - state.startedAt) * rate;
+    }
+    return state.grainPos;
+  }, []);
+
+  const noopGetPosition = useCallback(() => 0, []);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -854,6 +943,7 @@ export default function PresetEditor() {
               onStop={stopPreview}
               onSelect={() => setSelectedSlot(i)}
               onChange={(patch) => handleSlotChange(i, patch)}
+              getPosition={playingSlot === i ? getActivePosition : noopGetPosition}
             />
           ))}
         </div>

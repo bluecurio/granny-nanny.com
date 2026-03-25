@@ -26,6 +26,13 @@ function makeDefaultSlots(): SoundSlot[] {
   return Array.from({ length: 6 }, defaultSlot);
 }
 
+function dropImported(importedPresets: Set<string>, key: string): Set<string> {
+  if (!importedPresets.has(key)) return importedPresets;
+  const next = new Set(importedPresets);
+  next.delete(key);
+  return next;
+}
+
 // ─── Store shape ──────────────────────────────────────────────────────────────
 
 export type Tab = 'samples' | 'presets' | 'export' | 'docs';
@@ -111,14 +118,20 @@ export const useStore = create<AppState>((set, get) => ({
 
   setPreset: (bank, preset, slots) => {
     const key = presetKey(bank, preset);
-    set((s) => ({ presets: { ...s.presets, [key]: slots } }));
+    set((s) => ({
+      presets: { ...s.presets, [key]: slots },
+      importedPresets: dropImported(s.importedPresets, key),
+    }));
   },
 
   updateSlot: (bank, preset, slotIdx, patch) => {
     const key = presetKey(bank, preset);
     const slots = get().getPreset(bank, preset);
     const next = slots.map((slot, i) => (i === slotIdx ? { ...slot, ...patch } : slot));
-    set((s) => ({ presets: { ...s.presets, [key]: next } }));
+    set((s) => ({
+      presets: { ...s.presets, [key]: next },
+      importedPresets: dropImported(s.importedPresets, key),
+    }));
   },
 
   loadPresetFile: (bank, preset, data) => {

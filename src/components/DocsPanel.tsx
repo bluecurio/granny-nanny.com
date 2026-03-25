@@ -28,8 +28,8 @@ export default function DocsPanel() {
           device</strong>. For example, 
           <ul className="stuff">
             <li><u>bitcrush</u> effect on the MG sounds much better due to distortion</li>
-            <li>the <u>grain shift</u> & speed are an estimation</li>
-            <li><u>attack</u> and <u>release</u> are also estimations</li>
+            <li>both <u>grain size</u> and <u>grain shift</u> are a estimation, a poor one</li>
+            <li>also, <u>attack</u> and <u>release</u> are estimations</li>
           </ul> 
         </p>
         <p>

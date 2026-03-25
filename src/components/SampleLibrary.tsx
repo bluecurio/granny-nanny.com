@@ -6,7 +6,7 @@ import type { BitDepth } from '../audio/wavEncoder';
 import { parsePresetFilename, decodePreset } from '../codec/presetCodec';
 import './SampleLibrary.css';
 
-const VALID_NAME = /^[a-zA-Z][[a-zA-Z0-9]\b$/;
+const VALID_NAME = /^[A-Z][A-Z0-9]$/;
 const MG_RATE = MG_SAMPLE_RATE;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -127,33 +127,50 @@ function RecordBar() {
   );
 }
 
-function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [draft, setDraft] = useState(value);
+function NameInput({ value, usedNames, onChange }: {
+  value: string;
+  usedNames: Set<string>;
+  onChange: (v: string) => void;
+}) {
+  const [draft, setDraft]   = useState(value);
+  const [error, setError]   = useState<string | null>(null);
 
-  useEffect(() => setDraft(value), [value]);
+  useEffect(() => { setDraft(value); setError(null); }, [value]);
 
   const commit = () => {
     const v = draft.toUpperCase();
-    if (v.length === 2 && VALID_NAME.test(v)) {
-      onChange(v);
-    } else {
-      setDraft(value); // revert
+    if (v === value) { setError(null); return; }
+    if (!VALID_NAME.test(v)) {
+      setError('Must be a letter then a letter or digit');
+      setDraft(value);
+      return;
     }
+    if (usedNames.has(v)) {
+      setError(`${v} is already in use`);
+      setDraft(value);
+      return;
+    }
+    setError(null);
+    onChange(v);
   };
 
   return (
-    <input
-      className="name-input"
-      value={draft}
-      maxLength={2}
-      onChange={(e) => {
-        const v = e.target.value.toUpperCase();
-        if (VALID_NAME.test(v)) setDraft(v);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === 'Enter' && commit()}
-      spellCheck={false}
-    />
+    <div className="name-input-wrap">
+      <input
+        className={`name-input${error ? ' name-input--error' : ''}`}
+        value={draft}
+        maxLength={2}
+        onChange={(e) => setDraft(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+        onFocus={() => setError(null)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') { setDraft(value); setError(null); }
+        }}
+        spellCheck={false}
+      />
+      {error && <span className="name-input-error">{error}</span>}
+    </div>
   );
 }
 
@@ -269,17 +286,14 @@ function SampleRow({ entry, playState, getPosition, onPlay, onPause, onStop, onD
   const { updateSample, samples } = useStore();
   const usedNames = new Set(samples.filter((s) => s.id !== entry.id).map((s) => s.name));
 
-  const handleNameChange = (name: string) => {
-    if (usedNames.has(name)) return;
-    updateSample(entry.id, { name });
-  };
+  const handleNameChange = (name: string) => updateSample(entry.id, { name });
 
   const active = playState !== 'stopped';
 
   return (
     <div className={`sample-row ${active ? 'sample-row--active' : ''}`}>
       <div className="sample-row-controls">
-        <NameInput value={entry.name} onChange={handleNameChange} />
+        <NameInput value={entry.name} usedNames={usedNames} onChange={handleNameChange} />
         <span className="sample-filename" title={entry.originalFilename}>
           {entry.originalFilename}
         </span>
@@ -309,7 +323,7 @@ function SampleRow({ entry, playState, getPosition, onPlay, onPause, onStop, onD
             onClick={onPause}
             disabled={!active || playState === 'paused'}
           >
-            ⏸
+            ⏸︎
           </button>
           {/* Stop */}
           <button
@@ -331,7 +345,7 @@ function SampleRow({ entry, playState, getPosition, onPlay, onPause, onStop, onD
 // ─── microGranny filename detection ──────────────────────────────────────────
 
 // Matches any audio file whose name starts with a letter followed by a letter or digit
-const MG_FILENAME_RE = /^([A-Z][A-Z0-9])/i;
+const MG_FILENAME_RE = /^([A-Z][A-Z0-9]\b)/i;
 
 // Persists for the lifetime of the page; reset only on refresh.
 let sessionMgDecision: 'use' | 'skip' | null = null;

@@ -325,6 +325,12 @@
 }
 
 /* ─── Name input ────────────────────────────────────────────────────────── */
+.name-input-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .name-input {
   width: 38px;
   padding: 3px 5px;
@@ -341,6 +347,24 @@
 .name-input:focus {
   outline: none;
   border-color: var(--blue);
+}
+.name-input--error {
+  border-color: var(--orange) !important;
+}
+
+.name-input-error {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--orange);
+  background: var(--surface-1);
+  border: 1px solid var(--orange);
+  border-radius: var(--radius-s);
+  padding: 2px 6px;
+  z-index: 10;
+  pointer-events: none;
 }
 
 /* ─── Sample meta ───────────────────────────────────────────────────────── */

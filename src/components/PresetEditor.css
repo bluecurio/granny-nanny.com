@@ -302,6 +302,16 @@
   border-radius: 2px;
 }
 
+.slot-waveform-cursor {
+  position: absolute;
+  top: 8px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+
 .slot-duration {
   position: absolute;
   bottom: 12px;
