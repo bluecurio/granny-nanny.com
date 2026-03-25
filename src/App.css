@@ -72,6 +72,10 @@
   color: var(--text-3);
 }
 
+.app-version {
+  margin-left: auto;
+}
+
 .app-footer a {
   color: var(--text-2);
   text-decoration: none;

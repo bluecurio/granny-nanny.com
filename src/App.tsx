@@ -56,6 +56,7 @@ export default function App() {
 
       <footer className="app-footer">
         built by&nbsp;<a href="https://daniel-renfro.com" target="_blank" rel="noreferrer">Daniel Renfro</a>
+        <span className="app-version">v1.0</span>
       </footer>
     </div>
   );
