@@ -3,7 +3,7 @@ import { useStore, nextAvailableName, type SampleEntry } from '../store';
 import { fileToMono, MG_SAMPLE_RATE } from '../audio/resample';
 import { startRecording, type RecorderHandle } from '../audio/recorder';
 import type { BitDepth } from '../audio/wavEncoder';
-import { parsePresetFilename, decodePreset } from '../codec/presetCodec';
+import { parsePresetFilename } from '../codec/presetCodec';
 import './SampleLibrary.css';
 
 const VALID_NAME = /^[A-Z][A-Z0-9]$/;
