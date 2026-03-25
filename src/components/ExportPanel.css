@@ -51,6 +51,35 @@
 .mono { font-family: var(--font); }
 .bold { font-weight: bold; color: var(--text-1); }
 
+/* ─── Checkboxes ────────────────────────────────────────────────────────── */
+.export-checkbox {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.export-col-check {
+  width: 28px;
+  text-align: center;
+}
+
+.export-row--unchecked {
+  opacity: 0.4;
+}
+
+.export-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.export-heading-row .export-heading {
+  margin-bottom: 0;
+}
+
 /* ─── Preset list ───────────────────────────────────────────────────────── */
 .export-preset-list {
   display: flex;

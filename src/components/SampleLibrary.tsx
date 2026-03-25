@@ -3,6 +3,7 @@ import { useStore, nextAvailableName, type SampleEntry } from '../store';
 import { fileToMono, MG_SAMPLE_RATE } from '../audio/resample';
 import { startRecording, type RecorderHandle } from '../audio/recorder';
 import type { BitDepth } from '../audio/wavEncoder';
+import { parsePresetFilename, decodePreset } from '../codec/presetCodec';
 import './SampleLibrary.css';
 
 const VALID_NAME = /^[a-zA-Z][[a-zA-Z0-9]\b$/;
@@ -23,16 +24,22 @@ function isValidSampleFile(file: File) {
   return file.type.startsWith('audio/') || /\.(wav|mp3|ogg|flac|aiff?|m4a|webm)$/i.test(file.name);
 }
 
+function isMgPresetFile(file: File) {
+  return parsePresetFilename(file.name) !== null;
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const filterFiles = (raw: File[]) => raw.filter((f) => isValidSampleFile(f) || isMgPresetFile(f));
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const files = Array.from(e.dataTransfer.files).filter(isValidSampleFile);
+    const files = filterFiles(Array.from(e.dataTransfer.files));
     if (files.length) onFiles(files);
   }, [onFiles]);
 
@@ -47,18 +54,18 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
       <input
         ref={inputRef}
         type="file"
-        accept="audio/*"
+        accept="audio/*,.txt"
         multiple
         className="sr-only"
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []).filter(isValidSampleFile);
+          const files = filterFiles(Array.from(e.target.files ?? []));
           if (files.length) onFiles(files);
           e.target.value = '';
         }}
       />
       <span className="drop-zone-icon">+</span>
-      <span>Drop audio files here or <u>click to browse</u></span>
-      <span className="dimmed">WAV · MP3 · OGG · FLAC · AIFF · M4A</span>
+      <span>Drop audio files or SD card presets here or <u>click to browse</u></span>
+      <span className="dimmed">WAV · MP3 · OGG · FLAC · AIFF · M4A · P##.TXT</span>
     </div>
   );
 }
@@ -405,7 +412,7 @@ type SortKey = 'name' | 'file' | 'duration';
 type SortDir = 'asc' | 'desc';
 
 export default function SampleLibrary() {
-  const { samples, addSample, removeSample } = useStore();
+  const { samples, addSample, removeSample, loadPresetFile, markPresetImported } = useStore();
   const [processing, setProcessing]   = useState<string[]>([]);
   const [decodeErrors, setDecodeErrors] = useState<string[]>([]);
   const [mgDialog, setMgDialog]       = useState<MgDialogState | null>(null);
@@ -545,14 +552,32 @@ export default function SampleLibrary() {
   []);
 
   const processFiles = useCallback(async (files: File[]) => {
+    const presetFiles = files.filter(isMgPresetFile);
+    const audioFiles  = files.filter((f) => !isMgPresetFile(f));
+
     setProcessing(files.map((f) => f.name));
     setDecodeErrors([]);
 
-    const usedNamesRef = new Set(samples.map((s) => s.name));
-    const mgFiles = files.map((f) => isMgFilename(f.name));
+    // ── Import preset .TXT files ───────────────────────────────────────────
+    for (const file of presetFiles) {
+      const coords = parsePresetFilename(file.name)!;
+      try {
+        const buf   = await file.arrayBuffer();
+        const data  = new Uint8Array(buf);
+        loadPresetFile(coords.bank, coords.preset, data);
+        markPresetImported(coords.bank, coords.preset);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setDecodeErrors((prev) => [...prev, `${file.name}: ${msg}`]);
+      }
+    }
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    // ── Import audio files ─────────────────────────────────────────────────
+    const usedNamesRef = new Set(samples.map((s) => s.name));
+    const mgFiles = audioFiles.map((f) => isMgFilename(f.name));
+
+    for (let i = 0; i < audioFiles.length; i++) {
+      const file = audioFiles[i];
       try {
         const audioData = await fileToMono(file);
         const proposedMgName = mgFiles[i];
@@ -584,8 +609,9 @@ export default function SampleLibrary() {
         setDecodeErrors((prev) => [...prev, `${file.name}: ${msg}`]);
       }
     }
+
     setProcessing([]);
-  }, [samples, addSample, askMg]);
+  }, [samples, addSample, loadPresetFile, markPresetImported, askMg]);
 
   return (
     <div className="sample-library">

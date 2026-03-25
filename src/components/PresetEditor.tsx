@@ -146,7 +146,7 @@ interface AudioState {
 // ─── Bank / preset grid ───────────────────────────────────────────────────────
 
 function BankPresetGrid() {
-  const { activeBank, activePreset, setActivePreset, presets } = useStore();
+  const { activeBank, activePreset, setActivePreset, presets, importedPresets } = useStore();
 
   return (
     <div className="bp-grid">
@@ -160,15 +160,21 @@ function BankPresetGrid() {
         <div key={bank} className="bp-row">
           <span className="bp-label">{bank}</span>
           {Array.from({ length: 6 }, (_, p) => {
-            const key    = presetFilename(bank, p);
-            const active = activeBank === bank && activePreset === p;
-            const hasData = !!presets[key];
+            const key      = presetFilename(bank, p);
+            const active   = activeBank === bank && activePreset === p;
+            const imported = importedPresets.has(key);
+            const hasData  = !!presets[key] && !imported;
             return (
               <button
                 key={p}
-                className={`bp-cell ${active ? 'bp-cell--active' : ''} ${hasData ? 'bp-cell--has-data' : ''}`}
+                className={[
+                  'bp-cell',
+                  active   ? 'bp-cell--active'   : '',
+                  imported ? 'bp-cell--imported'  : '',
+                  hasData  ? 'bp-cell--has-data'  : '',
+                ].join(' ')}
                 onClick={() => setActivePreset(bank, p)}
-                title={`Bank ${bank}, Preset ${p + 1}`}
+                title={`Bank ${bank}, Preset ${p + 1}${imported ? ' (imported)' : ''}`}
               />
             );
           })}
@@ -176,6 +182,7 @@ function BankPresetGrid() {
       ))}
       <div className="bp-legend dimmed">
         <span className="bp-dot bp-dot--data" /> edited
+        <span className="bp-dot bp-dot--imported" /> imported
       </div>
     </div>
   );

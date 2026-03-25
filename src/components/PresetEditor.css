@@ -55,6 +55,7 @@
 }
 .bp-cell:hover { border-color: var(--border-hi); }
 .bp-cell--has-data { border-color: var(--blue); }
+.bp-cell--imported { border-color: var(--green); }
 .bp-cell--active {
   background: var(--blue) !important;
   border-color: var(--blue);
@@ -73,7 +74,8 @@
   border-radius: 1px;
   border: 1px solid;
 }
-.bp-dot--data { border-color: var(--blue); }
+.bp-dot--data     { border-color: var(--blue); }
+.bp-dot--imported { border-color: var(--green); }
 
 /* ─── Preset main ───────────────────────────────────────────────────────── */
 .preset-main {

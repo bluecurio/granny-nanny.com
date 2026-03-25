@@ -43,6 +43,8 @@ interface AppState {
 
   // Presets
   presets: Record<string, SoundSlot[]>;
+  /** Keys of presets that were loaded directly from .TXT files. */
+  importedPresets: Set<string>;
   activeBank: number;
   activePreset: number;
   setActivePreset: (bank: number, preset: number) => void;
@@ -50,6 +52,7 @@ interface AppState {
   setPreset: (bank: number, preset: number, slots: SoundSlot[]) => void;
   updateSlot: (bank: number, preset: number, slotIdx: number, patch: Partial<SoundSlot>) => void;
   loadPresetFile: (bank: number, preset: number, data: Uint8Array) => void;
+  markPresetImported: (bank: number, preset: number) => void;
 }
 
 // ─── Auto-name generation ─────────────────────────────────────────────────────
@@ -95,6 +98,7 @@ export const useStore = create<AppState>((set, get) => ({
     })),
 
   presets: {},
+  importedPresets: new Set<string>(),
   activeBank: 0,
   activePreset: 0,
 
@@ -121,5 +125,14 @@ export const useStore = create<AppState>((set, get) => ({
     const slots = decodePreset(data);
     const key = presetKey(bank, preset);
     set((s) => ({ presets: { ...s.presets, [key]: slots } }));
+  },
+
+  markPresetImported: (bank, preset) => {
+    const key = presetKey(bank, preset);
+    set((s) => {
+      const next = new Set(s.importedPresets);
+      next.add(key);
+      return { importedPresets: next };
+    });
   },
 }));
